@@ -10,6 +10,7 @@ import org.apache.solr.client.solrj.impl.{InputStreamResponseParser, StreamingBi
 import org.apache.solr.client.solrj.request.QueryRequest
 import org.apache.solr.client.solrj.response.QueryResponse
 import org.apache.solr.client.solrj._
+import org.apache.solr.common.SolrException.ErrorCode
 import org.apache.solr.common.{SolrDocument, SolrException}
 import org.apache.solr.common.params.SolrParams
 import org.apache.solr.common.util.NamedList
@@ -138,10 +139,8 @@ object SolrQuerySupport extends Logging {
   }
 
   def addDefaultSort(solrQuery: SolrQuery, uniqueKey: String): Unit = {
-    if (solrQuery.getSortField == null || solrQuery.getSortField.isEmpty) {
+    if (solrQuery.getSortField == null || solrQuery.getSortField.isEmpty)
       solrQuery.addSort(SolrQuery.SortClause.asc(uniqueKey))
-      logInfo(s"Added default sort clause on uniqueKey field $uniqueKey to query $solrQuery")
-    }
   }
 
   def querySolr(
@@ -203,7 +202,7 @@ object SolrQuerySupport extends Logging {
             if (callback != null) {
               resp = Some(queryAndStreamResponsePost(solrQuery, callback, solrClient))
             } else {
-              resp = Some(solrClient.query(solrQuery, METHOD.POST))
+              resp = Some(solrClient.query(solrQuery))
             }
           } catch {
             case execOnRetry: SolrServerException =>
@@ -259,8 +258,7 @@ object SolrQuerySupport extends Logging {
     val fieldTypeToClassMap = getFieldTypeToClassMap(solrUrl)
     val fieldNames = if (fields == null || fields.isEmpty) getFieldsFromLuke(solrUrl) else fields
     val fieldDefinitionsFromSchema = getFieldDefinitionsFromSchema(solrUrl, fieldNames)
-    fieldDefinitionsFromSchema.foreach {
-      case(name, payloadRef) =>
+    fieldDefinitionsFromSchema.foreach{ case(name, payloadRef) =>
       payloadRef match {
         case m: Map[_, _] if m.keySet.forall(_.isInstanceOf[String])=>
           val payload = m.asInstanceOf[Map[String, Any]]
@@ -344,7 +342,7 @@ object SolrQuerySupport extends Logging {
           } else {
             fieldTypeMap.put(name, solrFieldMeta)
           }
-        case somethingElse: Any => log.warn("Unknown class type '" + somethingElse.getClass.toString + "'; "+somethingElse)
+        case somethingElse: Any => log.warn("Unknown class type '" + somethingElse.getClass.toString + "'")
       }
     }
 
@@ -364,24 +362,8 @@ object SolrQuerySupport extends Logging {
       Some(sb.toString())
     } else None
 
-    val fieldsUrlBase = solrUrl + "schema/fields?showDefaults=true&includeDynamic=true"
-    val flList = fl.getOrElse("")
-    if (flList.length > (2048 - fieldsUrlBase.length)) {
-      val fieldDefs = scala.collection.mutable.HashMap.empty[String,Any]
-      // go get all fields from Solr and then prune from there
-      val allFields = fetchFieldSchemaInfoFromSolr(fieldsUrlBase)
-      fieldNames.foreach(fname => {
-        if (allFields.containsKey(fname)) {
-          fieldDefs.put(fname, allFields.get(fname).get)
-        }
-      })
-      fieldDefs.toMap
-    } else {
-      fetchFieldSchemaInfoFromSolr(fieldsUrlBase+flList)
-    }
-  }
+    val fieldsUrl = solrUrl + "schema/fields?showDefaults=true&includeDynamic=true" + fl.getOrElse("")
 
-  def fetchFieldSchemaInfoFromSolr(fieldsUrl: String) : Map[String, Any] = {
     try {
       SolrJsonSupport.getJson(SolrJsonSupport.getHttpClient, fieldsUrl, 2).values match {
         case m: Map[_, _] if m.keySet.forall(_.isInstanceOf[String])=>
@@ -400,6 +382,7 @@ object SolrQuerySupport extends Logging {
           }
         case somethingElse: Any => throw new Exception("Unknown type '" + somethingElse.getClass + "' from schema object " + somethingElse)
       }
+
     } catch {
       case e: Exception =>
         log.error("Can't get field metadata from Solr using request '" + fieldsUrl + "' due to exception " + e)

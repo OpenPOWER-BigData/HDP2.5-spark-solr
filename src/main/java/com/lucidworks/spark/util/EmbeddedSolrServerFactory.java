@@ -2,7 +2,6 @@ package com.lucidworks.spark.util;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -90,11 +89,13 @@ public class EmbeddedSolrServerFactory implements Serializable {
       instanceDir.getAbsolutePath()));
 
     SolrResourceLoader solrResourceLoader =
-      new SolrResourceLoader(solrHomeDir.toPath());
+      new SolrResourceLoader(solrHomeDir.getAbsolutePath());
     CoreContainer coreContainer = new CoreContainer(solrResourceLoader);
     coreContainer.load();
 
-    SolrCore core = coreContainer.create(coreName, instanceDir.toPath(), Collections.<String, String>emptyMap());
+    CoreDescriptor descr =
+      new CoreDescriptor(coreContainer, coreName, instanceDir.getAbsolutePath());
+    SolrCore core = coreContainer.create(descr);
     return new EmbeddedSolrServer(coreContainer, coreName);
   }
 

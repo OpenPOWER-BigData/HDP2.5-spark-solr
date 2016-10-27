@@ -1,10 +1,11 @@
 package com.lucidworks.spark;
 
 import com.lucidworks.spark.rdd.SolrJavaRDD;
+import com.lucidworks.spark.rdd.SolrRDD;
 import com.lucidworks.spark.util.SolrSupport;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.util.DateMathParser;
+import org.apache.solr.common.util.DateUtil;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -14,9 +15,7 @@ import org.junit.BeforeClass;
 
 import java.io.File;
 import java.io.Serializable;
-import java.time.Instant;
 import java.util.Arrays;
-import java.util.Date;
 
 import static org.junit.Assert.assertTrue;
 
@@ -108,13 +107,8 @@ public class RDDProcessorTestBase extends TestSolrCloudClusterSupport implements
 
         if (fields.length > 6) {
           list = fields[6].substring(1,fields[6].length()-1).split(";");
-          for (int i=0; i < list.length; i++) {
-            if (list[i].endsWith("Z"))
-              doc.addField("field6_tdts", DateMathParser.parseMath(null, list[i]));
-            else
-              doc.addField("field6_tdts", DateMathParser.parseMath(null, list[i] + "Z"));
-          }
-
+          for (int i=0; i < list.length; i++)
+            doc.addField("field6_tdts", DateUtil.parseDate(list[i]));
         }
 
         return doc;

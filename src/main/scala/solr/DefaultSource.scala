@@ -9,7 +9,7 @@ class DefaultSource extends RelationProvider with CreatableRelationProvider with
 
   override def createRelation(sqlContext: SQLContext, parameters: Map[String, String]): BaseRelation = {
     try {
-      return new SolrRelation(parameters, sqlContext)
+      new SolrRelation(parameters, sqlContext)
     } catch {
       case re: RuntimeException => throw re
       case e: Exception => throw new RuntimeException(e)

@@ -51,7 +51,7 @@ public class LuceneTextAnalyzerTest {
     assertExpectedTokens(analyzer2, "some-dashed-phrase", Arrays.asList("some", "dashed", "phrase"));
 
     String stdTokMax3Schema = json(
-        "{'defaultLuceneMatchVersion': '5.0.0',\n" +
+        "{'defaultLuceneMatchVersion': '4.10.4',\n" +
         " 'analyzers': [{'name': 'StdTok_max3',\n" +
         "                'tokenizer': {'type': 'standard', 'maxTokenLength': '3'} }],\n" +
         "'fields': [{'regex': '.+', 'analyzer': 'StdTok_max3'}] }\n");
@@ -285,7 +285,7 @@ public class LuceneTextAnalyzerTest {
     assertExpectedTokens(analyzer1, new StringReader("Te,st. punct"), Arrays.asList("te", "st", "punct"));
 
     String stdTokMax3Schema = json(
-        "{'defaultLuceneMatchVersion': '5.0.0',\n" +
+        "{'defaultLuceneMatchVersion': '4.10.4',\n" +
             " 'analyzers': [{'name': 'StdTok_max3',\n" +
             "                'tokenizer': {'type': 'standard', 'maxTokenLength': '3'} }],\n" +
             "'fields': [{'regex': '.+', 'analyzer': 'StdTok_max3'}] }\n");
@@ -294,27 +294,6 @@ public class LuceneTextAnalyzerTest {
     assertExpectedTokens(analyzer2, new StringReader("Test for tokenization."),
         Arrays.asList("Tes", "t", "for", "tok", "eni", "zat", "ion"));
     assertExpectedTokens(analyzer2, new StringReader("Te,st.  punct"), Arrays.asList("Te", "st", "pun", "ct"));
-  }
-
-  @Test
-  public void testPreAnalyzedJson() {
-    String text = "Test for tokenization.";
-    // TODO: compare parsed JSON rather than strings; direct string comparison is brittle, e.g. key ordering in JSON objects is not guaranteed
-    String jsonWithStringVal = json(
-        "{'v':'1','str':'" + text + "','tokens':["
-            + "{'t':'test','s':0,'e':4,'i':1},"
-            + "{'t':'for','s':5,'e':8,'i':1},"
-            + "{'t':'tokenization','s':9,'e':21,'i':1}]}");
-    String jsonNoStringVal = json(
-        "{'v':'1','tokens':["
-            + "{'t':'test','s':0,'e':4,'i':1},"
-            + "{'t':'for','s':5,'e':8,'i':1},"
-            + "{'t':'tokenization','s':9,'e':21,'i':1}]}");
-    LuceneTextAnalyzer analyzer = new LuceneTextAnalyzer(stdTokLowerSchema);
-    assertExpectedJson(analyzer, "dummy", text, true, jsonWithStringVal);
-    assertExpectedJson(analyzer, "dummy", text, false, jsonNoStringVal);
-    assertExpectedJson(analyzer, "dummy", new StringReader(text), true, jsonWithStringVal);
-    assertExpectedJson(analyzer, "dummy", new StringReader(text), false, jsonNoStringVal);
   }
 
   private static void assertExpectedTokens(LuceneTextAnalyzer analyzer, String in, List<String> expected) {
@@ -353,20 +332,6 @@ public class LuceneTextAnalyzerTest {
   private static void assertExpectedTokensMV // different name because type erasure
       (LuceneTextAnalyzer analyzer, Map<String,List<String>> fieldValues, Map<String,List<String>> expected) {
     Map<String,List<String>> output = analyzer.analyzeMVJava(fieldValues);
-    Assert.assertEquals(expected, output);
-  }
-
-  private static void assertExpectedJson
-      (LuceneTextAnalyzer analyzer, String field, String in, boolean stored, String expected) {
-    // TODO: compare parsed JSON rather than strings; direct string comparison is brittle, e.g. key ordering in JSON objects is not guaranteed
-    String output = analyzer.toPreAnalyzedJson(field, in, stored);
-    Assert.assertEquals(expected, output);
-  }
-
-  private static void assertExpectedJson
-      (LuceneTextAnalyzer analyzer, String field, Reader reader, boolean stored, String expected) {
-    // TODO: compare parsed JSON rather than strings; direct string comparison is brittle, e.g. key ordering in JSON objects is not guaranteed
-    String output = analyzer.toPreAnalyzedJson(field, reader, stored);
     Assert.assertEquals(expected, output);
   }
 

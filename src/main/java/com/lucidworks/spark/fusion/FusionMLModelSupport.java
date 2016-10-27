@@ -6,14 +6,12 @@ import org.apache.commons.compress.archivers.ArchiveStreamFactory;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.commons.compress.utils.IOUtils;
 import org.apache.commons.io.FileUtils;
-import org.apache.http.HttpEntity;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.EntityBuilder;
 import org.apache.http.client.methods.HttpPut;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.ContentType;
 import org.apache.http.message.BasicNameValuePair;
-import org.apache.http.util.EntityUtils;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkContext;
 import org.apache.spark.ml.util.MLWritable;
@@ -65,18 +63,7 @@ public class FusionMLModelSupport {
     // load the zip file with metadata into Fusion
     FusionPipelineClient fusionClient =
             new FusionPipelineClient(putRequest.getRequestLine().getUri(), fusionUser, fusionPassword, fusionRealm);
-    HttpEntity entity = null;
-    try {
-      entity = fusionClient.sendRequestToFusion(putRequest);
-    } finally {
-      if (entity != null) {
-        try {
-          EntityUtils.consume(entity);
-        } catch (Exception ignore) {
-          log.warn("Failed to consume entity due to: "+ignore);
-        }
-      }
-    }
+    fusionClient.sendRequestToFusion(putRequest);
   }
 
   public static void saveModelInLocalFusion(SparkContext sc,
@@ -96,19 +83,7 @@ public class FusionMLModelSupport {
 
     // load the zip file with metadata into Fusion
     FusionPipelineClient fusionClient = new FusionPipelineClient(putRequest.getRequestLine().getUri());
-
-    HttpEntity entity = null;
-    try {
-      entity = fusionClient.sendRequestToFusion(putRequest);
-    } finally {
-      if (entity != null) {
-        try {
-          EntityUtils.consume(entity);
-        } catch (Exception ignore) {
-          log.warn("Failed to consume entity due to: "+ignore);
-        }
-      }
-    }
+    fusionClient.sendRequestToFusion(putRequest);
   }
 
   public static HttpPut buildPutRequestToFusion(String modelId,

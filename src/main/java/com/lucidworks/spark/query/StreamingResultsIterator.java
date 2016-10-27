@@ -7,7 +7,6 @@ import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.StreamingResponseCallback;
 import org.apache.solr.client.solrj.impl.CloudSolrClient;
-import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
 import scala.Option;
@@ -36,8 +35,6 @@ public class StreamingResultsIterator extends ResultsIterator {
   protected String cursorMarkOfCurrentPage = null;
   protected boolean closeAfterIterating = false;
   protected LinkedBlockingDeque<SolrDocument> queue;
-  protected Integer maxSampleDocs = null;
-  protected String solrId = null;
 
   private ResponseCallback responseCallback = new ResponseCallback();
   private CountDownLatch docListInfoLatch = new CountDownLatch(1);
@@ -49,15 +46,6 @@ public class StreamingResultsIterator extends ResultsIterator {
   public StreamingResultsIterator(SolrClient solrServer, SolrQuery solrQuery, String cursorMark) {
     this.queue = new LinkedBlockingDeque<SolrDocument>();
     this.solrServer = solrServer;
-
-    // get some identifier for this solr server
-    if (solrServer instanceof HttpSolrClient) {
-      HttpSolrClient httpSolrClient = (HttpSolrClient)solrServer;
-      solrId = httpSolrClient.getBaseURL();
-    } else {
-      solrId = solrServer.toString();
-    }
-
     this.closeAfterIterating = !(solrServer instanceof CloudSolrClient);
     this.solrQuery = solrQuery;
     this.usingCursors = (cursorMark != null);
@@ -68,7 +56,7 @@ public class StreamingResultsIterator extends ResultsIterator {
   }
 
   public boolean hasNext() {
-    if (totalDocs == 0 || (totalDocs != -1 && numDocs >= totalDocs) || (maxSampleDocs != null && maxSampleDocs >= 0 && numDocs >= maxSampleDocs))
+    if (totalDocs == 0 || (totalDocs != -1 && numDocs >= totalDocs))
       return false; // done iterating!
 
     boolean hasNext = false;
@@ -89,7 +77,7 @@ public class StreamingResultsIterator extends ResultsIterator {
 
     if (!hasNext && closeAfterIterating) {
       try {
-        solrServer.close();
+        solrServer.shutdown();
       } catch (Exception exc) { exc.printStackTrace(); }
     }
 
@@ -125,14 +113,14 @@ public class StreamingResultsIterator extends ResultsIterator {
         return totalDocs > 0;
       }
     } else {
-      throw new SolrServerException("No response from "+solrId+" found for query '" + solrQuery + "'");
+      throw new SolrServerException("No response found for query '" + solrQuery + "'");
     }
 
   }
 
   public SolrDocument next() {
     if (iterPos >= currentPageSize)
-      throw new NoSuchElementException("No more docs available from "+solrId+"! Please call hasNext before calling next!");
+      throw new NoSuchElementException("No more docs available! Please call hasNext before calling next!");
 
     SolrDocument next = null;
     try {
@@ -145,7 +133,7 @@ public class StreamingResultsIterator extends ResultsIterator {
     if (next == null) {
       throw new RuntimeException("No SolrDocument in queue (waited 60 seconds) while processing cursorMark="+
               cursorMarkOfCurrentPage+", read "+numDocs+" of "+totalDocs+
-          " so far from "+solrId+". Most likely this means your query's sort criteria is not generating stable results for computing deep-paging cursors, has the index changed? " +
+          " so far. Most likely this means your query's sort criteria is not generating stable results for computing deep-paging cursors, has the index changed? " +
           "If so, try using a filter criteria the bounds the results to non-changing data.");
     }
 
@@ -173,7 +161,7 @@ public class StreamingResultsIterator extends ResultsIterator {
       if (doc != null) {
         queue.offer(doc);
       } else {
-        log.warn("Received null SolrDocument from "+solrId+" callback while processing cursorMark="+
+        log.warn("Received null SolrDocument from streamSolrDocument callback while processing cursorMark="+
           cursorMarkOfCurrentPage+", read "+numDocs+" of "+totalDocs+" so far.");
       }
     }
@@ -181,23 +169,6 @@ public class StreamingResultsIterator extends ResultsIterator {
     public void streamDocListInfo(long numFound, long start, Float maxScore) {
       docListInfoLatch.countDown();
       totalDocs = numFound;
-
-      // see if they enabled sampling
-      if (maxSampleDocs == null) {
-        if (numFound > 0) {
-          String samplePctParam = solrQuery.get("sample_pct");
-          if (samplePctParam != null) {
-            float pct = Float.parseFloat(samplePctParam);
-            maxSampleDocs = Math.round((float)numFound * pct);
-            log.info("Sampling "+maxSampleDocs+" ("+pct+" of "+numFound+") from "+solrId);
-          } else {
-            maxSampleDocs = -1; // no sampling
-          }
-        } else {
-          maxSampleDocs = -1;
-        }
-      }
-
       if (currentPageSize > totalDocs)
         currentPageSize = (int)totalDocs;
     }

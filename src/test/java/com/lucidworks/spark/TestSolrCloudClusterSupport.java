@@ -100,7 +100,7 @@ public class TestSolrCloudClusterSupport {
   @AfterClass
   public static void stopCluster() throws Exception {
     if (cloudSolrServer != null) {
-      cloudSolrServer.close();
+      cloudSolrServer.shutdown();
     } else {
       log.error("No CloudSolrClient available for this test! " +
               "Typically this means there was a failure to start the MiniSolrCloudCluster, check logs for more details.");
