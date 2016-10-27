@@ -116,6 +116,11 @@ object SolrSupport extends Logging {
       fusionCredentials: String,
       docs: DStream[_],
       batchSize: Int): Unit = {
+
+    val urls = fusionUrl.split(",").distinct
+    val url = new URL(urls(0))
+    val pipelinePath = url.getPath
+
     docs.foreachRDD(rdd => {
       rdd.foreachPartition(docIter => {
         val creds = if (fusionCredentials != null) fusionCredentials.split(":") else null
@@ -128,13 +133,13 @@ object SolrSupport extends Logging {
           val inputDoc = docIter.next()
           batch.add(inputDoc)
           if (batch.size >= batchSize) {
-            fusionClient.postBatchToPipeline(batch)
+            fusionClient.postBatchToPipeline(pipelinePath, batch)
             batch = List.empty[Any]
           }
         }
 
         if (batch.nonEmpty) {
-          fusionClient.postBatchToPipeline(batch)
+          fusionClient.postBatchToPipeline(pipelinePath, batch)
           batch = List.empty[Any]
         }
 
@@ -147,7 +152,14 @@ object SolrSupport extends Logging {
       zkHost: String,
       collection: String,
       batchSize: Int,
-      rdd: RDD[SolrInputDocument]) = {
+      rdd: RDD[SolrInputDocument]): Unit = indexDocs(zkHost, collection, batchSize, rdd, None)
+
+  def indexDocs(
+      zkHost: String,
+      collection: String,
+      batchSize: Int,
+      rdd: RDD[SolrInputDocument],
+      commitWithin: Option[Int]): Unit = {
     //TODO: Return success or false by boolean ?
     rdd.foreachPartition(solrInputDocumentIterator => {
       val solrClient = getCachedCloudClient(zkHost)
@@ -160,30 +172,42 @@ object SolrSupport extends Logging {
         batch += doc
         if (batch.length >= batchSize) {
           numDocs += batch.length
-          sendBatchToSolr(solrClient, collection, batch)
+          sendBatchToSolr(solrClient, collection, batch, commitWithin)
           batch.clear
         }
       }
       if (batch.nonEmpty) {
         numDocs += batch.length
-        sendBatchToSolr(solrClient, collection, batch)
+        sendBatchToSolr(solrClient, collection, batch, commitWithin)
         batch.clear
       }
     })
   }
 
-  def sendBatchToSolr(solrClient: SolrClient, collection: String, batch: Iterable[SolrInputDocument]): Unit = {
+  def sendBatchToSolr(solrClient: SolrClient, collection: String, batch: Iterable[SolrInputDocument]): Unit =
+    sendBatchToSolr(solrClient, collection, batch, None)
+
+  def sendBatchToSolr(
+      solrClient: SolrClient,
+      collection: String,
+      batch: Iterable[SolrInputDocument],
+      commitWithin: Option[Int]): Unit = {
     val req = new UpdateRequest()
     req.setParam("collection", collection)
 
-    if (log.isDebugEnabled) {
-      log.debug("Sending batch of " + batch.size + " to collection " + collection)
-    }
+    val initialTime = System.currentTimeMillis()
+
+    if (commitWithin.isDefined)
+      req.setCommitWithin(commitWithin.get)
+
+    log.info("Sending batch of " + batch.size + " to collection " + collection)
 
     req.add(asJavaCollection(batch))
 
     try {
       solrClient.request(req)
+      val timeTaken = (System.currentTimeMillis() - initialTime)/1000.0
+      log.info("Took '" + timeTaken + "' secs to index '" + batch.size + "' documents")
     } catch {
       case e: Exception =>
         if (shouldRetry(e)) {
@@ -432,19 +456,19 @@ object SolrSupport extends Logging {
     val zkStateReader: ZkStateReader = solrClient.getZkStateReader
     val clusterState: ClusterState = zkStateReader.getClusterState
     var collections = Array.empty[String]
-
-    if (clusterState.hasCollection(collection)) {
-      collections = Array(collection)
-    }
+    for(col <- collection.split(",")) {
+      if (clusterState.hasCollection(col)) {
+        collections = collections :+ col
+      }
     else {
       val aliases: Aliases = zkStateReader.getAliases
-      val aliasedCollections: String = aliases.getCollectionAlias(collection)
+      val aliasedCollections: String = aliases.getCollectionAlias(col)
       if (aliasedCollections == null) {
-        throw new IllegalArgumentException("Collection " + collection + " not found!")
+        throw new IllegalArgumentException("Collection " + col + " not found!")
       }
       collections = aliasedCollections.split(",")
+      }
     }
-
     val liveNodes  = clusterState.getLiveNodes
 
     val shards = new ListBuffer[SolrShard]()
